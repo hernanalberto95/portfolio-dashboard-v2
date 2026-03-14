@@ -514,13 +514,19 @@ if len(data.columns) == 0:
 returns = data.pct_change().dropna()
 bench_returns = benchmark_data.pct_change().dropna()
 
-common_idx = returns.index.intersection(bench_returns.index)
-returns = returns.loc[common_idx]
-bench_returns = bench_returns.loc[common_idx]
+# FIX ROBUSTO DE ALINEACIÓN
+aligned_returns = pd.concat(
+    [returns, bench_returns.rename("Benchmark")],
+    axis=1,
+    join="inner"
+).dropna()
 
-if returns.empty or bench_returns.empty:
+if aligned_returns.empty:
     st.error("Insufficient overlapping data between assets and benchmark.")
     st.stop()
+
+returns = aligned_returns.drop(columns=["Benchmark"])
+bench_returns = aligned_returns["Benchmark"]
 
 color_map = get_color_map(list(data.columns))
 
@@ -1267,7 +1273,12 @@ unsafe_allow_html=True
 
 st.header("Rolling Correlation vs Benchmark")
 
-rolling_corr = port_series.rolling(126).corr(bench_returns)
+aligned_corr = pd.concat(
+    [port_series.rename("Portfolio"), bench_returns.rename("Benchmark")],
+    axis=1
+).dropna()
+
+rolling_corr = aligned_corr["Portfolio"].rolling(126).corr(aligned_corr["Benchmark"])
 
 corr_df = rolling_corr.reset_index()
 corr_df.columns = ["Date", "Correlation"]
