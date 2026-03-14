@@ -142,36 +142,12 @@ h1,h2,h3{
     color: #FFFFFF;
 }
 
-.news-group {
-    margin-bottom: 14px;
-    padding: 10px 12px 6px 12px;
-    border-radius: 14px;
-    border: 1px solid rgba(179,136,255,0.16);
-    background: linear-gradient(180deg, rgba(32,35,48,0.65) 0%, rgba(18,20,31,0.78) 100%);
-}
-
-.news-group-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #F3EEFF;
-    margin-bottom: 8px;
-}
-
-.news-pill {
-    display: inline-block;
-    vertical-align: top;
-    width: 31%;
-    min-height: 74px;
-    margin: 0 1.1% 10px 0;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.85));
-    border: 1px solid rgba(179,136,255,0.16);
-    box-sizing: border-box;
-}
-
-.news-pill:nth-child(4n) {
-    margin-right: 0;
+.news-card {
+    padding:10px 12px;
+    border-radius:12px;
+    margin-bottom:8px;
+    background:linear-gradient(135deg, rgba(123,44,191,0.18), rgba(43,45,66,0.82));
+    border:1px solid rgba(179,136,255,0.14);
 }
 
 .news-link {
@@ -181,7 +157,7 @@ h1,h2,h3{
     line-height:1.25;
     font-weight:600;
     display:block;
-    margin-bottom:6px;
+    margin-bottom:4px;
 }
 
 .news-link:hover {
@@ -192,20 +168,6 @@ h1,h2,h3{
     font-size:0.72rem;
     color:#A8A8A8;
     line-height:1.2;
-}
-
-@media (max-width: 1100px) {
-    .news-pill {
-        width: 48%;
-        margin-right: 2%;
-    }
-}
-
-@media (max-width: 700px) {
-    .news-pill {
-        width: 100%;
-        margin-right: 0;
-    }
 }
 
 [data-testid="stDataEditor"] {
@@ -589,9 +551,9 @@ def load_market_news(tickers_list):
             if title and link:
                 ticker_items.append({
                     "ticker": ticker,
-                    "title": title,
-                    "publisher": publisher,
-                    "link": link,
+                    "title": str(title),
+                    "publisher": str(publisher),
+                    "link": str(link),
                     "time": publish_time
                 })
 
@@ -676,7 +638,7 @@ st.header("Latest Market News")
 st.markdown(
 """
 <div class="small-note">
-Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance and grouped by ticker for easier review.
+Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance, grouped by ticker, and can be expanded or collapsed for a cleaner view.
 </div>
 """,
 unsafe_allow_html=True
@@ -693,24 +655,23 @@ else:
 
         ticker_news = grouped_news[ticker]
 
-        html_block = f'<div class="news-group"><div class="news-group-title">{ticker}</div>'
+        with st.expander(f"{ticker} — {len(ticker_news)} recent headlines", expanded=False):
+            for _, row in ticker_news.iterrows():
+                time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
 
-        for _, row in ticker_news.iterrows():
-            time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
-
-            html_block += f"""
-            <div class="news-pill">
-                <a href="{row['link']}" target="_blank" class="news-link">
-                    {row['title']}
-                </a>
-                <div class="news-meta">
-                    {row['publisher']} • {time_str}
-                </div>
-            </div>
-            """
-
-        html_block += '</div>'
-        st.markdown(html_block, unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div class="news-card">
+                        <a href="{row['link']}" target="_blank" class="news-link">
+                            {row['title']}
+                        </a>
+                        <div class="news-meta">
+                            {row['publisher']} • {time_str}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 # --------------------------------------------------
 # PRICE CHARTS
