@@ -1373,69 +1373,108 @@ unsafe_allow_html=True
 # MARKET NEWS
 # --------------------------------------------------
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_market_news(tickers_list):
+    news_items = []
+
+    for ticker in tickers_list:
+        try:
+            tk = yf.Ticker(ticker)
+
+            # Intento principal: método más configurable
+            try:
+                raw_news = tk.get_news(count=5, tab="news")
+            except Exception:
+                raw_news = []
+
+            # Fallback: propiedad simple
+            if not raw_news:
+                try:
+                    raw_news = tk.news
+                except Exception:
+                    raw_news = []
+
+            for item in raw_news[:5]:
+                title = item.get("title") or item.get("headline")
+                publisher = item.get("publisher") or item.get("source") or "Unknown source"
+                link = item.get("link") or item.get("url")
+
+                publish_time = (
+                    item.get("providerPublishTime")
+                    or item.get("published_at")
+                    or item.get("pubDate")
+                )
+
+                if publish_time is not None:
+                    try:
+                        if isinstance(publish_time, (int, float)):
+                            publish_time = pd.to_datetime(publish_time, unit="s")
+                        else:
+                            publish_time = pd.to_datetime(publish_time)
+                    except Exception:
+                        publish_time = pd.NaT
+                else:
+                    publish_time = pd.NaT
+
+                if title and link:
+                    news_items.append({
+                        "ticker": ticker,
+                        "title": title,
+                        "publisher": publisher,
+                        "link": link,
+                        "time": publish_time
+                    })
+
+        except Exception:
+            pass
+
+    if not news_items:
+        return pd.DataFrame(columns=["ticker", "title", "publisher", "link", "time"])
+
+    news_df = pd.DataFrame(news_items).drop_duplicates(subset=["ticker", "title"])
+    news_df = news_df.sort_values("time", ascending=False, na_position="last").head(12)
+
+    return news_df
+
+
 st.header("Latest Market News")
 
 st.markdown(
 """
 <div class="small-note">
-Latest news headlines related to the selected assets. 
-These articles are sourced from Yahoo Finance and help provide context for recent market movements.
+Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance and help provide context for recent market movements.
 </div>
 """,
 unsafe_allow_html=True
 )
 
-news_items = []
+news_df = load_market_news(tickers)
 
-for ticker in tickers:
-    try:
-        t = yf.Ticker(ticker)
-        ticker_news = t.news
-
-        if ticker_news:
-            for n in ticker_news[:3]:   # 3 noticias por ticker
-                news_items.append({
-                    "ticker": ticker,
-                    "title": n["title"],
-                    "publisher": n["publisher"],
-                    "link": n["link"],
-                    "time": pd.to_datetime(n["providerPublishTime"], unit="s")
-                })
-    except:
-        pass
-
-if len(news_items) == 0:
-
-    st.info("No news available for the selected tickers.")
-
+if news_df.empty:
+    st.info("No news available for the selected tickers at the moment.")
 else:
-
-    news_df = pd.DataFrame(news_items).sort_values("time", ascending=False).head(10)
-
     for _, row in news_df.iterrows():
+        time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
 
         st.markdown(
-        f"""
-        <div style="
-            padding:12px 16px;
-            border-radius:12px;
-            margin-bottom:10px;
-            background:linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.80));
-            border:1px solid rgba(179,136,255,0.18);
-        ">
-
-        <b>{row['ticker']}</b> — 
-        <a href="{row['link']}" target="_blank" style="color:#B8B8FF; text-decoration:none;">
-        {row['title']}
-        </a>
-
-        <br>
-
-        <span style="font-size:0.8rem; color:#A8A8A8;">
-        {row['publisher']} • {row['time'].strftime('%Y-%m-%d %H:%M')}
-        </span>
-
-        </div>
-        """,
-        unsafe_allow_html=True
+            f"""
+            <div style="
+                padding:12px 16px;
+                border-radius:12px;
+                margin-bottom:10px;
+                background:linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.80));
+                border:1px solid rgba(179,136,255,0.18);
+            ">
+                <b>{row['ticker']}</b> —
+                <a href="{row['link']}" target="_blank" style="color:#B8B8FF; text-decoration:none;">
+                    {row['title']}
+                </a>
+                <br>
+                <span style="font-size:0.8rem; color:#A8A8A8;">
+                    {row['publisher']} • {time_str}
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
+
