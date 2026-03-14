@@ -283,12 +283,6 @@ def render_metric_cards(metrics_df, columns_per_row=3):
                     unsafe_allow_html=True
                 )
 
-def annualized_return(series):
-    return series.mean() * 252
-
-def annualized_vol(series):
-    return series.std(ddof=1) * np.sqrt(252)
-
 def portfolio_performance(weights, mu, cov, rf):
     weights = np.array(weights)
     ret = float(np.dot(mu, weights))
@@ -372,7 +366,9 @@ def load_prices_cached(tickers_tuple, start, end):
     if isinstance(data, pd.Series):
         data = data.to_frame()
 
-    return data.dropna(how="all")
+    data.index = pd.to_datetime(data.index).tz_localize(None)
+    data = data.dropna(axis=1, how="all")
+    return data
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_benchmark_cached(benchmark, start, end):
@@ -383,9 +379,13 @@ def load_benchmark_cached(benchmark, start, end):
         auto_adjust=True,
         progress=False
     )["Close"]
+
     if isinstance(data, pd.DataFrame):
         data = data.squeeze()
-    return data.dropna()
+
+    data.index = pd.to_datetime(data.index).tz_localize(None)
+    data = data.dropna()
+    return data
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_rf_rate():
@@ -491,10 +491,6 @@ def monte_carlo_paths(daily_mean, daily_std, horizon_days, simulations):
         sim_terminal_returns[i] = sim_paths[-1, i] - 1
 
     return sim_paths, sim_terminal_returns
-
-# --------------------------------------------------
-# SAFE MARKET NEWS
-# --------------------------------------------------
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_market_news(tickers_list):
@@ -607,27 +603,59 @@ with st.spinner("Loading market data..."):
     benchmark_data = load_benchmark_cached(benchmark, start, end)
     rf = load_rf_rate()
 
-if len(data.columns) == 0:
+if data.empty or len(data.columns) == 0:
     st.error("No valid ticker data was downloaded.")
     st.stop()
 
-returns = data.pct_change().dropna()
-bench_returns = benchmark_data.pct_change().dropna()
+if benchmark_data.empty:
+    st.error("Benchmark data could not be downloaded.")
+    st.stop()
 
-aligned_returns = pd.concat(
-    [returns, bench_returns.rename("Benchmark")],
-    axis=1,
-    join="inner"
-).dropna()
+# Limpiar tickers sin historia útil
+data = data.dropna(axis=1, how="all")
+if data.empty or len(data.columns) == 0:
+    st.error("No valid ticker data was downloaded.")
+    st.stop()
 
-if aligned_returns.empty:
+# Rendimientos diarios
+returns_raw = data.pct_change(fill_method=None)
+bench_returns_raw = benchmark_data.pct_change(fill_method=None)
+
+# Quitar columnas/tickers con muy poca data
+valid_cols = [col for col in returns_raw.columns if returns_raw[col].notna().sum() >= 60]
+data = data[valid_cols]
+
+if len(valid_cols) == 0:
+    st.error("None of the selected tickers has enough data for the selected horizon.")
+    st.stop()
+
+returns = data.pct_change(fill_method=None)
+
+# Para optimización: fechas comunes entre todos los activos
+returns = returns.dropna(how="any")
+
+if returns.empty:
+    st.error("The selected tickers do not share enough common price history.")
+    st.stop()
+
+# Alinear benchmark a las mismas fechas del portafolio
+bench_returns = bench_returns_raw.reindex(returns.index).dropna()
+returns = returns.loc[bench_returns.index]
+
+if returns.empty or bench_returns.empty:
     st.error("Insufficient overlapping data between assets and benchmark.")
     st.stop()
 
-returns = aligned_returns.drop(columns=["Benchmark"])
-bench_returns = aligned_returns["Benchmark"]
+# Alinear precios para gráficos sin destruir el resto
+data = data.reindex(returns.index).dropna(how="all")
+tickers = list(returns.columns)
+data = data[tickers]
 
-color_map = get_color_map(list(data.columns))
+if data.empty or len(tickers) == 0:
+    st.error("No aligned price data is available after cleaning.")
+    st.stop()
+
+color_map = get_color_map(tickers)
 
 # --------------------------------------------------
 # MARKET NEWS
