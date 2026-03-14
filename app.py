@@ -142,22 +142,70 @@ h1,h2,h3{
     color: #FFFFFF;
 }
 
-.news-card {
-    padding:12px 16px;
-    border-radius:12px;
-    margin-bottom:10px;
-    background:linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.80));
-    border:1px solid rgba(179,136,255,0.18);
+.news-group {
+    margin-bottom: 14px;
+    padding: 10px 12px 6px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(179,136,255,0.16);
+    background: linear-gradient(180deg, rgba(32,35,48,0.65) 0%, rgba(18,20,31,0.78) 100%);
+}
+
+.news-group-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #F3EEFF;
+    margin-bottom: 8px;
+}
+
+.news-pill {
+    display: inline-block;
+    vertical-align: top;
+    width: 31%;
+    min-height: 74px;
+    margin: 0 1.1% 10px 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.85));
+    border: 1px solid rgba(179,136,255,0.16);
+    box-sizing: border-box;
+}
+
+.news-pill:nth-child(4n) {
+    margin-right: 0;
 }
 
 .news-link {
-    color:#B8B8FF;
+    color:#D9CCFF;
     text-decoration:none;
+    font-size:0.84rem;
+    line-height:1.25;
+    font-weight:600;
+    display:block;
+    margin-bottom:6px;
+}
+
+.news-link:hover {
+    color:#FFFFFF;
 }
 
 .news-meta {
-    font-size:0.8rem;
+    font-size:0.72rem;
     color:#A8A8A8;
+    line-height:1.2;
+}
+
+@media (max-width: 1100px) {
+    .news-pill {
+        width: 48%;
+        margin-right: 2%;
+    }
+}
+
+@media (max-width: 700px) {
+    .news-pill {
+        width: 100%;
+        margin-right: 0;
+    }
 }
 
 [data-testid="stDataEditor"] {
@@ -488,12 +536,11 @@ def monte_carlo_paths(daily_mean, daily_std, horizon_days, simulations):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_market_news(tickers_list):
-    news_items = []
+    grouped_news = {}
 
     for ticker in tickers_list:
         raw_news = []
 
-        # Intento 1: Search
         try:
             search_obj = yf.Search(query=ticker, max_results=8, news_count=8)
             if hasattr(search_obj, "news") and search_obj.news:
@@ -501,7 +548,6 @@ def load_market_news(tickers_list):
         except Exception:
             raw_news = []
 
-        # Intento 2: get_news
         if not raw_news:
             try:
                 tk = yf.Ticker(ticker)
@@ -509,7 +555,6 @@ def load_market_news(tickers_list):
             except Exception:
                 raw_news = []
 
-        # Intento 3: .news
         if not raw_news:
             try:
                 tk = yf.Ticker(ticker)
@@ -517,7 +562,9 @@ def load_market_news(tickers_list):
             except Exception:
                 raw_news = []
 
-        for item in raw_news[:8]:
+        ticker_items = []
+
+        for item in raw_news[:6]:
             title = item.get("title") or item.get("headline")
             publisher = item.get("publisher") or item.get("source") or "Unknown source"
             link = item.get("link") or item.get("url") or item.get("canonicalUrl", {}).get("url")
@@ -540,7 +587,7 @@ def load_market_news(tickers_list):
                 publish_time = pd.NaT
 
             if title and link:
-                news_items.append({
+                ticker_items.append({
                     "ticker": ticker,
                     "title": title,
                     "publisher": publisher,
@@ -548,14 +595,12 @@ def load_market_news(tickers_list):
                     "time": publish_time
                 })
 
-    if not news_items:
-        return pd.DataFrame(columns=["ticker", "title", "publisher", "link", "time"])
+        if ticker_items:
+            ticker_df = pd.DataFrame(ticker_items).drop_duplicates(subset=["title"])
+            ticker_df = ticker_df.sort_values("time", ascending=False, na_position="last").head(4)
+            grouped_news[ticker] = ticker_df
 
-    news_df = pd.DataFrame(news_items)
-    news_df = news_df.drop_duplicates(subset=["ticker", "title"])
-    news_df = news_df.sort_values("time", ascending=False, na_position="last").head(12)
-
-    return news_df
+    return grouped_news
 
 # --------------------------------------------------
 # INPUTS
@@ -631,35 +676,41 @@ st.header("Latest Market News")
 st.markdown(
 """
 <div class="small-note">
-Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance and help provide context for recent market movements.
+Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance and grouped by ticker for easier review.
 </div>
 """,
 unsafe_allow_html=True
 )
 
-news_df = load_market_news(tickers)
+grouped_news = load_market_news(tickers)
 
-if news_df.empty:
+if len(grouped_news) == 0:
     st.info("No news available for the selected tickers at the moment.")
 else:
-    for _, row in news_df.iterrows():
-        time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
+    for ticker in tickers:
+        if ticker not in grouped_news:
+            continue
 
-        st.markdown(
-            f"""
-            <div class="news-card">
-                <b>{row['ticker']}</b> —
+        ticker_news = grouped_news[ticker]
+
+        html_block = f'<div class="news-group"><div class="news-group-title">{ticker}</div>'
+
+        for _, row in ticker_news.iterrows():
+            time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
+
+            html_block += f"""
+            <div class="news-pill">
                 <a href="{row['link']}" target="_blank" class="news-link">
                     {row['title']}
                 </a>
-                <br>
-                <span class="news-meta">
+                <div class="news-meta">
                     {row['publisher']} • {time_str}
-                </span>
+                </div>
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+            """
+
+        html_block += '</div>'
+        st.markdown(html_block, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # PRICE CHARTS
