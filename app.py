@@ -1368,3 +1368,74 @@ Changes in correlation often indicate regime shifts in market behavior.
 """,
 unsafe_allow_html=True
 )
+
+# --------------------------------------------------
+# MARKET NEWS
+# --------------------------------------------------
+
+st.header("Latest Market News")
+
+st.markdown(
+"""
+<div class="small-note">
+Latest news headlines related to the selected assets. 
+These articles are sourced from Yahoo Finance and help provide context for recent market movements.
+</div>
+""",
+unsafe_allow_html=True
+)
+
+news_items = []
+
+for ticker in tickers:
+    try:
+        t = yf.Ticker(ticker)
+        ticker_news = t.news
+
+        if ticker_news:
+            for n in ticker_news[:3]:   # 3 noticias por ticker
+                news_items.append({
+                    "ticker": ticker,
+                    "title": n["title"],
+                    "publisher": n["publisher"],
+                    "link": n["link"],
+                    "time": pd.to_datetime(n["providerPublishTime"], unit="s")
+                })
+    except:
+        pass
+
+if len(news_items) == 0:
+
+    st.info("No news available for the selected tickers.")
+
+else:
+
+    news_df = pd.DataFrame(news_items).sort_values("time", ascending=False).head(10)
+
+    for _, row in news_df.iterrows():
+
+        st.markdown(
+        f"""
+        <div style="
+            padding:12px 16px;
+            border-radius:12px;
+            margin-bottom:10px;
+            background:linear-gradient(135deg, rgba(123,44,191,0.20), rgba(43,45,66,0.80));
+            border:1px solid rgba(179,136,255,0.18);
+        ">
+
+        <b>{row['ticker']}</b> — 
+        <a href="{row['link']}" target="_blank" style="color:#B8B8FF; text-decoration:none;">
+        {row['title']}
+        </a>
+
+        <br>
+
+        <span style="font-size:0.8rem; color:#A8A8A8;">
+        {row['publisher']} • {row['time'].strftime('%Y-%m-%d %H:%M')}
+        </span>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+        )
