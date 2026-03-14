@@ -1378,60 +1378,68 @@ def load_market_news(tickers_list):
     news_items = []
 
     for ticker in tickers_list:
-        try:
-            tk = yf.Ticker(ticker)
+        raw_news = []
 
-            # Intento principal: método más configurable
+        # 1) Intento con Search de yfinance
+        try:
+            search_obj = yf.Search(query=ticker, max_results=8, news_count=8)
+            if hasattr(search_obj, "news") and search_obj.news:
+                raw_news = search_obj.news
+        except Exception:
+            raw_news = []
+
+        # 2) Fallback con get_news()
+        if not raw_news:
             try:
-                raw_news = tk.get_news(count=5, tab="news")
+                tk = yf.Ticker(ticker)
+                raw_news = tk.get_news(count=8, tab="news")
             except Exception:
                 raw_news = []
 
-            # Fallback: propiedad simple
-            if not raw_news:
+        # 3) Fallback con .news
+        if not raw_news:
+            try:
+                tk = yf.Ticker(ticker)
+                raw_news = tk.news
+            except Exception:
+                raw_news = []
+
+        for item in raw_news[:8]:
+            title = item.get("title") or item.get("headline")
+            publisher = item.get("publisher") or item.get("source") or "Unknown source"
+            link = item.get("link") or item.get("url") or item.get("canonicalUrl", {}).get("url")
+
+            publish_time = (
+                item.get("providerPublishTime")
+                or item.get("published_at")
+                or item.get("pubDate")
+            )
+
+            if publish_time is not None:
                 try:
-                    raw_news = tk.news
+                    if isinstance(publish_time, (int, float)):
+                        publish_time = pd.to_datetime(publish_time, unit="s")
+                    else:
+                        publish_time = pd.to_datetime(publish_time)
                 except Exception:
-                    raw_news = []
-
-            for item in raw_news[:5]:
-                title = item.get("title") or item.get("headline")
-                publisher = item.get("publisher") or item.get("source") or "Unknown source"
-                link = item.get("link") or item.get("url")
-
-                publish_time = (
-                    item.get("providerPublishTime")
-                    or item.get("published_at")
-                    or item.get("pubDate")
-                )
-
-                if publish_time is not None:
-                    try:
-                        if isinstance(publish_time, (int, float)):
-                            publish_time = pd.to_datetime(publish_time, unit="s")
-                        else:
-                            publish_time = pd.to_datetime(publish_time)
-                    except Exception:
-                        publish_time = pd.NaT
-                else:
                     publish_time = pd.NaT
+            else:
+                publish_time = pd.NaT
 
-                if title and link:
-                    news_items.append({
-                        "ticker": ticker,
-                        "title": title,
-                        "publisher": publisher,
-                        "link": link,
-                        "time": publish_time
-                    })
-
-        except Exception:
-            pass
+            if title and link:
+                news_items.append({
+                    "ticker": ticker,
+                    "title": title,
+                    "publisher": publisher,
+                    "link": link,
+                    "time": publish_time
+                })
 
     if not news_items:
         return pd.DataFrame(columns=["ticker", "title", "publisher", "link", "time"])
 
-    news_df = pd.DataFrame(news_items).drop_duplicates(subset=["ticker", "title"])
+    news_df = pd.DataFrame(news_items)
+    news_df = news_df.drop_duplicates(subset=["ticker", "title"])
     news_df = news_df.sort_values("time", ascending=False, na_position="last").head(12)
 
     return news_df
@@ -1442,7 +1450,7 @@ st.header("Latest Market News")
 st.markdown(
 """
 <div class="small-note">
-Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance and help provide context for recent market movements.
+Latest news headlines related to the selected assets. These articles are sourced from Yahoo Finance search/news endpoints and help provide context for recent market movements.
 </div>
 """,
 unsafe_allow_html=True
@@ -1451,7 +1459,7 @@ unsafe_allow_html=True
 news_df = load_market_news(tickers)
 
 if news_df.empty:
-    st.info("No news available for the selected tickers at the moment.")
+    st.warning("News is temporarily unavailable from Yahoo Finance for the selected tickers.")
 else:
     for _, row in news_df.iterrows():
         time_str = row["time"].strftime("%Y-%m-%d %H:%M") if pd.notna(row["time"]) else "Time unavailable"
@@ -1477,4 +1485,3 @@ else:
             """,
             unsafe_allow_html=True
         )
-
