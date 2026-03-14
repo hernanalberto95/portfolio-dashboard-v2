@@ -514,7 +514,6 @@ if len(data.columns) == 0:
 returns = data.pct_change().dropna()
 bench_returns = benchmark_data.pct_change().dropna()
 
-# FIX ROBUSTO DE ALINEACIÓN
 aligned_returns = pd.concat(
     [returns, bench_returns.rename("Benchmark")],
     axis=1,
@@ -768,6 +767,46 @@ fig_pie.update_layout(
 )
 st.plotly_chart(fig_pie, use_container_width=True)
 
+# --------------------------------------------------
+# PORTFOLIO ALLOCATION
+# --------------------------------------------------
+
+st.header("Portfolio Allocation")
+
+alloc_df = pd.DataFrame({
+    "Ticker": tickers,
+    "Weight": weights
+})
+
+fig_alloc = px.bar(
+    alloc_df,
+    x="Ticker",
+    y="Weight",
+    color="Ticker",
+    color_discrete_map=color_map,
+    title="Portfolio Allocation"
+)
+
+fig_alloc.update_layout(
+    paper_bgcolor="#0E1117",
+    plot_bgcolor="#0E1117",
+    font_color="white",
+    xaxis_title="Ticker",
+    yaxis_title="Weight"
+)
+
+st.plotly_chart(fig_alloc, use_container_width=True)
+
+st.markdown(
+"""
+<div class="small-note">
+This chart provides an alternative view of portfolio allocation. 
+Bar charts are often preferred by institutional investors because they allow easier comparison between positions.
+</div>
+""",
+unsafe_allow_html=True
+)
+
 treynor = (port_ret - rf) / port_vol if port_vol != 0 else np.nan
 max_dd = ((cum_port.cummax() - cum_port) / cum_port.cummax()).max()
 
@@ -812,6 +851,7 @@ else:
     min_var_series = pd.Series(returns.values @ min_var_weights, index=returns.index)
     min_var_cum = (1 + min_var_series).cumprod()
     min_var_max_dd = ((min_var_cum.cummax() - min_var_cum) / min_var_cum.cummax()).max()
+    min_var_treynor = (min_var_ret - rf) / min_var_vol if min_var_vol != 0 else np.nan
 
     min_var_weights_df = pd.DataFrame({
         "Ticker": tickers,
@@ -839,16 +879,18 @@ else:
             "Expected Return",
             "Volatility",
             "Sharpe Ratio",
+            "Treynor Ratio",
             "Max Drawdown"
         ],
         "Value": [
             f"{min_var_ret:.2%}",
             f"{min_var_vol:.2%}",
             f"{min_var_sharpe:.3f}",
+            f"{min_var_treynor:.3f}" if pd.notna(min_var_treynor) else "N/A",
             f"{min_var_max_dd:.2%}"
         ]
     })
-    render_metric_cards(min_var_metrics, columns_per_row=4)
+    render_metric_cards(min_var_metrics, columns_per_row=3)
 
     st.markdown(
         '<div class="small-note">The Minimum Variance portfolio is the lowest-risk feasible allocation under your weight constraints. '
@@ -979,13 +1021,29 @@ if bl_weights is None:
     st.warning(f"Black-Litterman optimization could not be solved: {bl_err}")
 else:
     bl_ret, bl_vol, bl_sharpe = portfolio_performance(bl_weights, mu_bl, cov, rf)
+    bl_series = pd.Series(returns.values @ bl_weights, index=returns.index)
+    bl_cum = (1 + bl_series).cumprod()
+    bl_max_dd = ((bl_cum.cummax() - bl_cum) / bl_cum.cummax()).max()
+    bl_treynor = (bl_ret - rf) / bl_vol if bl_vol != 0 else np.nan
 
     bl_cols = st.columns([1.2, 1.8])
 
     with bl_cols[0]:
         bl_metrics = pd.DataFrame({
-            "Metric": ["BL Expected Return", "BL Volatility", "BL Sharpe"],
-            "Value": [f"{bl_ret:.2%}", f"{bl_vol:.2%}", f"{bl_sharpe:.3f}"]
+            "Metric": [
+                "Expected Return",
+                "Volatility",
+                "Sharpe Ratio",
+                "Treynor Ratio",
+                "Max Drawdown"
+            ],
+            "Value": [
+                f"{bl_ret:.2%}",
+                f"{bl_vol:.2%}",
+                f"{bl_sharpe:.3f}",
+                f"{bl_treynor:.3f}" if pd.notna(bl_treynor) else "N/A",
+                f"{bl_max_dd:.2%}"
+            ]
         })
         render_metric_cards(bl_metrics, columns_per_row=1)
 
@@ -1306,46 +1364,6 @@ st.markdown(
 <div class="small-note">
 Rolling correlation measures how closely the portfolio moves with the benchmark over time. 
 Changes in correlation often indicate regime shifts in market behavior.
-</div>
-""",
-unsafe_allow_html=True
-)
-
-# --------------------------------------------------
-# PORTFOLIO ALLOCATION
-# --------------------------------------------------
-
-st.header("Portfolio Allocation")
-
-alloc_df = pd.DataFrame({
-    "Ticker": tickers,
-    "Weight": weights
-})
-
-fig_alloc = px.bar(
-    alloc_df,
-    x="Ticker",
-    y="Weight",
-    color="Ticker",
-    color_discrete_map=color_map,
-    title="Portfolio Allocation"
-)
-
-fig_alloc.update_layout(
-    paper_bgcolor="#0E1117",
-    plot_bgcolor="#0E1117",
-    font_color="white",
-    xaxis_title="Ticker",
-    yaxis_title="Weight"
-)
-
-st.plotly_chart(fig_alloc, use_container_width=True)
-
-st.markdown(
-"""
-<div class="small-note">
-This chart provides an alternative view of portfolio allocation. 
-Bar charts are often preferred by institutional investors because they allow easier comparison between positions.
 </div>
 """,
 unsafe_allow_html=True
