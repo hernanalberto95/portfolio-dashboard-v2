@@ -1219,3 +1219,123 @@ st.markdown(
 # --------------------------------------------------
 
 st.caption("Performance mode enabled: cached market downloads, Monte Carlo simulations and frontier computations reduce repeated rerun time materially.")
+
+# --------------------------------------------------
+# PORTFOLIO DRAWDOWN
+# --------------------------------------------------
+
+st.header("Portfolio Drawdown")
+
+cum_port_dd = (1 + port_series).cumprod()
+rolling_max_dd = cum_port_dd.cummax()
+drawdown = (cum_port_dd - rolling_max_dd) / rolling_max_dd
+
+drawdown_df = drawdown.reset_index()
+drawdown_df.columns = ["Date", "Drawdown"]
+
+fig_dd = px.area(
+    drawdown_df,
+    x="Date",
+    y="Drawdown",
+    title="Portfolio Drawdown",
+    color_discrete_sequence=["#9D4EDD"]
+)
+
+fig_dd.update_layout(
+    paper_bgcolor="#0E1117",
+    plot_bgcolor="#0E1117",
+    font_color="white",
+    xaxis_title="Date",
+    yaxis_title="Drawdown"
+)
+
+st.plotly_chart(fig_dd, use_container_width=True)
+
+st.markdown(
+"""
+<div class="small-note">
+Drawdown measures the percentage decline from the portfolio's historical peak. 
+It helps investors understand the depth and duration of losses during market stress.
+</div>
+""",
+unsafe_allow_html=True
+)
+
+# --------------------------------------------------
+# ROLLING CORRELATION VS BENCHMARK
+# --------------------------------------------------
+
+st.header("Rolling Correlation vs Benchmark")
+
+rolling_corr = port_series.rolling(126).corr(bench_returns)
+
+corr_df = rolling_corr.reset_index()
+corr_df.columns = ["Date", "Correlation"]
+
+fig_corr_roll = px.line(
+    corr_df,
+    x="Date",
+    y="Correlation",
+    title="126-Day Rolling Correlation with Benchmark",
+    color_discrete_sequence=["#B8B8FF"]
+)
+
+fig_corr_roll.update_layout(
+    paper_bgcolor="#0E1117",
+    plot_bgcolor="#0E1117",
+    font_color="white",
+    xaxis_title="Date",
+    yaxis_title="Correlation"
+)
+
+st.plotly_chart(fig_corr_roll, use_container_width=True)
+
+st.markdown(
+"""
+<div class="small-note">
+Rolling correlation measures how closely the portfolio moves with the benchmark over time. 
+Changes in correlation often indicate regime shifts in market behavior.
+</div>
+""",
+unsafe_allow_html=True
+)
+
+# --------------------------------------------------
+# PORTFOLIO ALLOCATION
+# --------------------------------------------------
+
+st.header("Portfolio Allocation")
+
+alloc_df = pd.DataFrame({
+    "Ticker": tickers,
+    "Weight": weights
+})
+
+fig_alloc = px.bar(
+    alloc_df,
+    x="Ticker",
+    y="Weight",
+    color="Ticker",
+    color_discrete_map=color_map,
+    title="Portfolio Allocation"
+)
+
+fig_alloc.update_layout(
+    paper_bgcolor="#0E1117",
+    plot_bgcolor="#0E1117",
+    font_color="white",
+    xaxis_title="Ticker",
+    yaxis_title="Weight"
+)
+
+st.plotly_chart(fig_alloc, use_container_width=True)
+
+st.markdown(
+"""
+<div class="small-note">
+This chart provides an alternative view of portfolio allocation. 
+Bar charts are often preferred by institutional investors because they allow easier comparison between positions.
+</div>
+""",
+unsafe_allow_html=True
+)
